@@ -1,0 +1,93 @@
+name: Emlak videosu
+
+on:
+  schedule:
+    - cron: "0 7 * * *"    # 10:00 TSİ  → slot 1 (piyasa / bölge)
+    - cron: "0 14 * * *"   # 17:00 TSİ  → slot 2 (mümkünse ilan)
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "İçerik türü"
+        type: choice
+        options: [auto, piyasa, bolge, ilan]
+        default: auto
+      listing:
+        description: "İlan klasörü adı (tür=ilan ise; boş = sıradaki)"
+        type: string
+        default: ""
+      dry_run:
+        description: "Sadece dene (geçmişe yazma, Drive'a yükleme)"
+        type: boolean
+        default: false
+      force_run:
+        description: "Bu slot bugün üretilmiş olsa bile yeniden üret"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # data/history.json'ı geri kaydetmek için
+
+concurrency:
+  group: emlak-video
+  cancel-in-progress: false
+
+jobs:
+  video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Bağımlılıkları kur
+        run: pip install -r requirements.txt
+
+      - name: Video üret
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DRIVE_TOKEN_JSON: ${{ secrets.DRIVE_TOKEN_JSON }}
+          DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID }}
+          BRAND_NAME: ${{ vars.BRAND_NAME }}
+          BRAND_PHONE: ${{ vars.BRAND_PHONE }}
+          BADGE: ${{ vars.BADGE }}
+          REGION: ${{ vars.REGION }}
+          NEWS_QUERIES: ${{ vars.NEWS_QUERIES }}
+          ACCENT_COLOR: ${{ vars.ACCENT_COLOR }}
+          TTS_VOICE: ${{ vars.TTS_VOICE }}
+          KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.kind != 'auto' && inputs.kind || '' }}
+          LISTING: ${{ inputs.listing }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.force_run || 'false' }}
+        run: python emlak_main.py
+
+      - name: Çıktıları sakla (video + açıklama)
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: emlak-${{ github.run_number }}
+          path: |
+            output/**/*.mp4
+            output/**/*.txt
+            output/**/*.json
+            output/**/run.log
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Geçmişi kaydet
+        if: success()
+        run: |
+          if [ -n "$(git status --porcelain data/history.json)" ]; then
+            git config user.name "emlak-bot"
+            git config user.email "emlak-bot@users.noreply.github.com"
+            git add data/history.json
+            git commit -m "history: $(date -u +%F) [skip ci]"
+            for i in 1 2 3; do
+              if git pull --rebase --autostash && git push; then exit 0; fi
+              sleep $((i * 5))
+            done
+            exit 1
+          fi

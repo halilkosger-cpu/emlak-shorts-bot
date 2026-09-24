@@ -1,0 +1,8 @@
+Tür: Arsa (SATILIK)
+Konum: Bağlum, Keçiören / Ankara
+Büyüklük: 500 m²
+İmar: konut imarlı (örnek — gerçek bilgiyi yaz)
+Fiyat: 2.500.000 TL
+Özellikler: yola cepheli, düz, tapu müstakil
+Not: Bu bir örnektir; klasör adı "ornek" ile başladığı için bot tarafından kullanılmaz.
+Serbest metin yazabilirsin; bot yalnızca burada yazanları söyler, olmayan bir şey uydurmaz.
